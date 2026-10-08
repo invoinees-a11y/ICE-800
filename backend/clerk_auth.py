@@ -172,6 +172,26 @@ def current_user(authorization: str | None = Header(None)) -> int:
     return _resolve_local_user(str(claims["sub"]))
 
 
+def strict_mfa_user(authorization: str | None = Header(None)) -> int:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Clerk bearer token")
+    claims = _verify_token(authorization.split(" ", 1)[1])
+    fva = claims.get("fva")
+    if not isinstance(fva, (list, tuple)) or len(fva) < 2:
+        raise HTTPException(403, "Recent multi-factor verification is required for this sensitive action.")
+    try:
+        first_age = int(fva[0])
+        second_age = int(fva[1])
+    except (TypeError, ValueError):
+        raise HTTPException(403, "Recent multi-factor verification is required for this sensitive action.")
+    if first_age < 0 or second_age < 0 or first_age > 10 or second_age > 10:
+        raise HTTPException(
+            403,
+            "Security check required: sign out and sign in again with MFA before this sensitive action.",
+        )
+    return _resolve_local_user(str(claims["sub"]))
+
+
 def public_config() -> dict[str, Any]:
     return {
         "auth_provider": "clerk",

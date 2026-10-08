@@ -37,8 +37,9 @@ from optimization_engine import (
 from notifications import send_email
 import plaid_service
 from production_api import router as production_router
+from rate_limit import check_rate_limit
 from security import hash_password, verify_password, make_token, decode_token, encrypt_secret, decrypt_secret
-from clerk_auth import current_user as clerk_current_user, public_config
+from clerk_auth import current_user as clerk_current_user, strict_mfa_user, public_config
 
 APP_DIR = Path(__file__).parent
 log = logging.getLogger("ice800")
@@ -61,12 +62,48 @@ credit_provider = get_credit_provider()
 
 
 @app.middleware("http")
+async def api_rate_limit(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/"):
+        if path in {"/api/plaid/webhook", "/api/v1/method/webhook"}:
+            limit, window = 600, 60
+        else:
+            sensitive_prefixes = (
+                "/api/plaid/",
+                "/api/v1/bank/",
+                "/api/v1/method/",
+                "/api/v1/payments/",
+                "/api/account",
+                "/api/v1/applications/card/start",
+            )
+            if path.startswith(sensitive_prefixes):
+                limit, window = 30, 60
+            elif request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                limit, window = 60, 60
+            else:
+                limit, window = 180, 60
+        client_host = request.client.host if request.client else "unknown"
+        key = f"{client_host}:{request.method}:{path}"
+        retry_after = check_rate_limit(key, limit, window)
+        if retry_after is not None:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Try again shortly."},
+                headers={"Retry-After": str(retry_after)},
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
@@ -525,7 +562,7 @@ def set_consent(x: ConsentIn, user_id: int = Depends(current_user)):
 
 
 @app.post("/api/plaid/link-token")
-async def link_token(user_id: int = Depends(current_user)):
+async def link_token(user_id: int = Depends(strict_mfa_user)):
     if not consent_granted(user_id, "terms", settings.terms_version) or not consent_granted(user_id, "privacy", settings.privacy_version):
         raise HTTPException(403, "Debes aceptar los términos y la privacidad vigentes antes de vincular cuentas")
     with db() as con:
@@ -537,7 +574,7 @@ async def link_token(user_id: int = Depends(current_user)):
 
 
 @app.post("/api/plaid/exchange")
-async def exchange(x: ExchangeIn, user_id: int = Depends(current_user)):
+async def exchange(x: ExchangeIn, user_id: int = Depends(strict_mfa_user)):
     data = await plaid_service.exchange_public_token(x.public_token)
     with db() as con:
         con.execute("""
@@ -557,7 +594,7 @@ def connections(user_id: int = Depends(current_user)):
 
 
 @app.delete("/api/connections/{connection_id}")
-async def disconnect(connection_id: int, user_id: int = Depends(current_user)):
+async def disconnect(connection_id: int, user_id: int = Depends(strict_mfa_user)):
     with db() as con:
         row = con.execute("SELECT * FROM connections WHERE id=? AND user_id=?", (connection_id, user_id)).fetchone()
     if not row:
@@ -1009,7 +1046,7 @@ def beta_event(x: BetaEventIn, user_id: int = Depends(current_user)):
 
 
 @app.get("/api/account/export")
-def export_account(user_id: int = Depends(current_user)):
+def export_account(user_id: int = Depends(strict_mfa_user)):
     with db() as con:
         user = con.execute("SELECT id,email,created_at FROM users WHERE id=?", (user_id,)).fetchone()
         accounts = [dict(r) for r in con.execute("SELECT account_id,name,type,subtype,mask,balance,available,credit_limit,updated_at FROM accounts WHERE user_id=?", (user_id,)).fetchall()]
@@ -1024,7 +1061,7 @@ def export_account(user_id: int = Depends(current_user)):
 
 
 @app.delete("/api/account")
-async def delete_account(user_id: int = Depends(current_user)):
+async def delete_account(user_id: int = Depends(strict_mfa_user)):
     with db() as con:
         conns = con.execute("SELECT access_token_enc FROM connections WHERE user_id=?", (user_id,)).fetchall()
     for c in conns:

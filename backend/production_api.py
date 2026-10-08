@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from audit import audit_event
 from config import settings
 from db import db
-from clerk_auth import current_user
+from clerk_auth import current_user, strict_mfa_user
 import plaid_service
 from providers import method_service, engine_service
 
@@ -113,7 +113,7 @@ def set_language(payload: LanguageIn, user_id: int = Depends(current_user)):
 
 
 @router.post("/bank/link-token")
-async def bank_link_token(user_id: int = Depends(current_user)):
+async def bank_link_token(user_id: int = Depends(strict_mfa_user)):
     try:
         token = await plaid_service.create_link_token(user_id, language=_lang_for(user_id))
     except Exception as exc:
@@ -122,7 +122,7 @@ async def bank_link_token(user_id: int = Depends(current_user)):
 
 
 @router.get("/method/connect")
-def method_connect(user_id: int = Depends(current_user)):
+def method_connect(user_id: int = Depends(strict_mfa_user)):
     url = method_service.opal_launch_url()
     if not url:
         raise HTTPException(503, "Method Opal launch URL is not configured for this partner account")
@@ -131,7 +131,7 @@ def method_connect(user_id: int = Depends(current_user)):
 
 
 @router.post("/method/entity")
-async def method_entity(payload: MethodEntityIn, user_id: int = Depends(current_user)):
+async def method_entity(payload: MethodEntityIn, user_id: int = Depends(strict_mfa_user)):
     if not method_service.configured():
         raise HTTPException(503, "Method is not configured")
     try:
@@ -168,7 +168,7 @@ def _provider_account(user_id: int, account_id: str):
 
 
 @router.post("/method/accounts/attach")
-async def attach_method_account(payload: MethodAccountAttachIn, user_id: int = Depends(current_user)):
+async def attach_method_account(payload: MethodAccountAttachIn, user_id: int = Depends(strict_mfa_user)):
     if not method_service.configured():
         raise HTTPException(503, "Method is not configured")
     with db() as con:
@@ -205,7 +205,7 @@ def provider_accounts(user_id: int = Depends(current_user)):
 
 
 @router.post("/payments/intents")
-def create_payment_intent(payload: PaymentIntentIn, user_id: int = Depends(current_user)):
+def create_payment_intent(payload: PaymentIntentIn, user_id: int = Depends(strict_mfa_user)):
     if not settings.payments_enabled:
         raise HTTPException(503, "Payments are not enabled for this deployment")
     if not _provider_account(user_id, payload.source_account_id) or not _provider_account(user_id, payload.destination_account_id):
@@ -230,7 +230,7 @@ def create_payment_intent(payload: PaymentIntentIn, user_id: int = Depends(curre
 
 
 @router.post("/payments/intents/{intent_id}/confirm")
-async def confirm_payment(intent_id: int, payload: PaymentConfirmIn, user_id: int = Depends(current_user)):
+async def confirm_payment(intent_id: int, payload: PaymentConfirmIn, user_id: int = Depends(strict_mfa_user)):
     if not payload.confirm:
         raise HTTPException(400, "Explicit confirmation is required")
     if not settings.payments_enabled or not method_service.configured():
@@ -294,7 +294,7 @@ async def card_preview(payload: CardPreviewIn, user_id: int = Depends(current_us
 
 
 @router.post("/applications/card/start")
-async def start_card_application(payload: CardApplicationIn, user_id: int = Depends(current_user)):
+async def start_card_application(payload: CardApplicationIn, user_id: int = Depends(strict_mfa_user)):
     if not settings.applications_enabled or not engine_service.configured():
         raise HTTPException(503, "Live card applications are not enabled for this deployment")
     req: dict[str, Any] = {}
