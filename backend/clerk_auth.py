@@ -61,6 +61,9 @@ def _verify_token(token: str) -> dict[str, Any]:
     if azp and str(azp).rstrip("/") not in permitted:
         raise HTTPException(401, "Invalid Clerk authorized party")
 
+    if claims.get("sts") == "pending":
+        raise HTTPException(403, "Authentication setup is incomplete")
+
     if not claims.get("sub"):
         raise HTTPException(401, "Clerk user is missing")
     return claims
