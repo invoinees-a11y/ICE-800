@@ -1,0 +1,236 @@
+name: Harden ICE-800 Security Phase 1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Add API rate limiter
+        shell: bash
+        run: |
+          cat > backend/rate_limit.py <<'PY'
+          from __future__ import annotations
+
+          import math
+          import time
+          from collections import defaultdict, deque
+          from threading import Lock
+
+          _buckets: dict[str, deque[float]] = defaultdict(deque)
+          _lock = Lock()
+
+          def check_rate_limit(key: str, limit: int, window_seconds: int) -> int | None:
+              now = time.monotonic()
+              cutoff = now - window_seconds
+              with _lock:
+                  q = _buckets[key]
+                  while q and q[0] <= cutoff:
+                      q.popleft()
+                  if len(q) >= limit:
+                      return max(1, math.ceil(window_seconds - (now - q[0])))
+                  q.append(now)
+                  if len(_buckets) > 5000:
+                      stale = [k for k, v in _buckets.items() if not v or v[-1] <= cutoff]
+                      for k in stale[:1000]:
+                          _buckets.pop(k, None)
+              return None
+          PY
+
+      - name: Add recent-MFA enforcement
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("backend/clerk_auth.py")
+          s = p.read_text(encoding="utf-8")
+          marker = 'def public_config() -> dict[str, Any]:\n'
+          if "def strict_mfa_user(" not in s:
+              block = '''def strict_mfa_user(authorization: str | None = Header(None)) -> int:
+              if not authorization or not authorization.startswith("Bearer "):
+                  raise HTTPException(401, "Missing Clerk bearer token")
+              claims = _verify_token(authorization.split(" ", 1)[1])
+              fva = claims.get("fva")
+              if not isinstance(fva, (list, tuple)) or len(fva) < 2:
+                  raise HTTPException(403, "Recent multi-factor verification is required for this sensitive action.")
+              try:
+                  first_age = int(fva[0])
+                  second_age = int(fva[1])
+              except (TypeError, ValueError):
+                  raise HTTPException(403, "Recent multi-factor verification is required for this sensitive action.")
+              if first_age < 0 or second_age < 0 or first_age > 10 or second_age > 10:
+                  raise HTTPException(
+                      403,
+                      "Security check required: sign out and sign in again with MFA before this sensitive action.",
+                  )
+              return _resolve_local_user(str(claims["sub"]))
+
+
+          '''
+              if marker not in s:
+                  raise SystemExit("public_config marker not found")
+              s = s.replace(marker, block + marker, 1)
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Harden main API
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("backend/main.py")
+          s = p.read_text(encoding="utf-8")
+
+          old = "from clerk_auth import current_user as clerk_current_user, public_config"
+          new = "from clerk_auth import current_user as clerk_current_user, strict_mfa_user, public_config"
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise SystemExit("Clerk import not found")
+
+          if "from rate_limit import check_rate_limit" not in s:
+              anchor = "from production_api import router as production_router\n"
+              if anchor not in s:
+                  raise SystemExit("production_api import anchor not found")
+              s = s.replace(anchor, anchor + "from rate_limit import check_rate_limit\n", 1)
+
+          marker = '@app.middleware("http")\nasync def security_headers(request: Request, call_next):\n'
+          if "async def api_rate_limit(" not in s:
+              block = '''@app.middleware("http")
+          async def api_rate_limit(request: Request, call_next):
+              path = request.url.path
+              if path.startswith("/api/"):
+                  if path in {"/api/plaid/webhook", "/api/v1/method/webhook"}:
+                      limit, window = 600, 60
+                  else:
+                      sensitive_prefixes = (
+                          "/api/plaid/",
+                          "/api/v1/bank/",
+                          "/api/v1/method/",
+                          "/api/v1/payments/",
+                          "/api/account",
+                          "/api/v1/applications/card/start",
+                      )
+                      if path.startswith(sensitive_prefixes):
+                          limit, window = 30, 60
+                      elif request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                          limit, window = 60, 60
+                      else:
+                          limit, window = 180, 60
+                  client_host = request.client.host if request.client else "unknown"
+                  key = f"{client_host}:{request.method}:{path}"
+                  retry_after = check_rate_limit(key, limit, window)
+                  if retry_after is not None:
+                      return JSONResponse(
+                          status_code=429,
+                          content={"detail": "Too many requests. Try again shortly."},
+                          headers={"Retry-After": str(retry_after)},
+                      )
+              return await call_next(request)
+
+
+          '''
+              if marker not in s:
+                  raise SystemExit("security middleware marker not found")
+              s = s.replace(marker, block + marker, 1)
+
+          anchor = '    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"\n'
+          if 'response.headers["Cache-Control"] = "no-store"' not in s:
+              replacement = anchor + '''    if request.url.path.startswith("/api/"):
+                  response.headers["Cache-Control"] = "no-store"
+                  response.headers["Pragma"] = "no-cache"
+          '''
+              if anchor not in s:
+                  raise SystemExit("header anchor not found")
+              s = s.replace(anchor, replacement, 1)
+
+          changes = {
+              'async def link_token(user_id: int = Depends(current_user)):':
+                  'async def link_token(user_id: int = Depends(strict_mfa_user)):',
+              'async def exchange(x: ExchangeIn, user_id: int = Depends(current_user)):':
+                  'async def exchange(x: ExchangeIn, user_id: int = Depends(strict_mfa_user)):',
+              'async def disconnect(connection_id: int, user_id: int = Depends(current_user)):':
+                  'async def disconnect(connection_id: int, user_id: int = Depends(strict_mfa_user)):',
+              'def export_account(user_id: int = Depends(current_user)):':
+                  'def export_account(user_id: int = Depends(strict_mfa_user)):',
+              'async def delete_account(user_id: int = Depends(current_user)):':
+                  'async def delete_account(user_id: int = Depends(strict_mfa_user)):',
+          }
+          for old, new in changes.items():
+              if old in s:
+                  s = s.replace(old, new, 1)
+              elif new not in s:
+                  raise SystemExit(f"Route not found: {old}")
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Harden production API
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("backend/production_api.py")
+          s = p.read_text(encoding="utf-8")
+
+          old = "from clerk_auth import current_user"
+          new = "from clerk_auth import current_user, strict_mfa_user"
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise SystemExit("Clerk import not found")
+
+          changes = {
+              'async def bank_link_token(user_id: int = Depends(current_user)):':
+                  'async def bank_link_token(user_id: int = Depends(strict_mfa_user)):',
+              'def method_connect(user_id: int = Depends(current_user)):':
+                  'def method_connect(user_id: int = Depends(strict_mfa_user)):',
+              'async def method_entity(payload: MethodEntityIn, user_id: int = Depends(current_user)):':
+                  'async def method_entity(payload: MethodEntityIn, user_id: int = Depends(strict_mfa_user)):',
+              'async def attach_method_account(payload: MethodAccountAttachIn, user_id: int = Depends(current_user)):':
+                  'async def attach_method_account(payload: MethodAccountAttachIn, user_id: int = Depends(strict_mfa_user)):',
+              'def create_payment_intent(payload: PaymentIntentIn, user_id: int = Depends(current_user)):':
+                  'def create_payment_intent(payload: PaymentIntentIn, user_id: int = Depends(strict_mfa_user)):',
+              'async def confirm_payment(intent_id: int, payload: PaymentConfirmIn, user_id: int = Depends(current_user)):':
+                  'async def confirm_payment(intent_id: int, payload: PaymentConfirmIn, user_id: int = Depends(strict_mfa_user)):',
+              'async def start_card_application(payload: CardApplicationIn, user_id: int = Depends(current_user)):':
+                  'async def start_card_application(payload: CardApplicationIn, user_id: int = Depends(strict_mfa_user)):',
+          }
+          for old, new in changes.items():
+              if old in s:
+                  s = s.replace(old, new, 1)
+              elif new not in s:
+                  raise SystemExit(f"Route not found: {old}")
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Validate Phase 1
+        shell: bash
+        run: |
+          python -m py_compile backend/main.py backend/clerk_auth.py backend/production_api.py backend/rate_limit.py
+          grep -q "def strict_mfa_user" backend/clerk_auth.py
+          grep -q "async def api_rate_limit" backend/main.py
+          grep -q 'Cache-Control.*no-store' backend/main.py
+          grep -q "Depends(strict_mfa_user)" backend/main.py
+          grep -q "Depends(strict_mfa_user)" backend/production_api.py
+          echo "ICE-800 Security Phase 1 validation passed."
+
+      - name: Commit Phase 1
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/main.py backend/clerk_auth.py backend/production_api.py backend/rate_limit.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Harden ICE-800 API rate limits and recent MFA"
+            git push
+          fi
