@@ -1,0 +1,58 @@
+name: Harden Clerk Pending Sessions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reject pending Clerk sessions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path("backend/clerk_auth.py")
+          s = p.read_text(encoding="utf-8")
+
+          if 'claims.get("sts") == "pending"' not in s:
+              marker = '    if not claims.get("sub"):\n'
+              insert = (
+                  '    if claims.get("sts") == "pending":\n'
+                  '        raise HTTPException(403, "Authentication setup is incomplete")\n\n'
+              )
+              if marker not in s:
+                  raise SystemExit("Expected Clerk verification block was not found.")
+              s = s.replace(marker, insert + marker, 1)
+              p.write_text(s, encoding="utf-8")
+              print("Pending-session protection added.")
+          else:
+              print("Pending-session protection is already present.")
+          PY
+
+      - name: Validate backend
+        shell: bash
+        run: |
+          python -m py_compile backend/clerk_auth.py
+          grep -q 'claims.get("sts") == "pending"' backend/clerk_auth.py
+          echo "Validation passed."
+
+      - name: Commit hardening
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/clerk_auth.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Reject pending Clerk sessions before app access"
+            git push
+          fi
