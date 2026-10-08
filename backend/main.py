@@ -68,11 +68,18 @@ async def security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; "
-        "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com; "
-        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
+        "https://challenges.cloudflare.com https://*.protect.clerk.com; "
+        "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com "
+        "https://*.protect.clerk.com:*; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev https://img.clerk.com; "
         "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
-        "frame-src https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; object-src 'none'; base-uri 'self'"
+        "worker-src 'self' blob:; "
+        "frame-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
+        "https://challenges.cloudflare.com https://*.protect.clerk.com; "
+        "form-action 'self'; object-src 'none'; base-uri 'self'"
     )
     if settings.app_env == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
