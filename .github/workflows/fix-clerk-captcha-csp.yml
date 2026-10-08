@@ -1,0 +1,80 @@
+name: Fix Clerk CAPTCHA CSP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix-csp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Patch Content Security Policy for Clerk CAPTCHA
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path("backend/main.py")
+          s = p.read_text(encoding="utf-8")
+
+          old = '''    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; "
+        "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+        "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+        "frame-src https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; object-src 'none'; base-uri 'self'"
+    )
+'''
+
+          new = '''    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
+        "https://challenges.cloudflare.com https://*.protect.clerk.com; "
+        "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com "
+        "https://*.protect.clerk.com:*; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev https://img.clerk.com; "
+        "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+        "worker-src 'self' blob:; "
+        "frame-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
+        "https://challenges.cloudflare.com https://*.protect.clerk.com; "
+        "form-action 'self'; object-src 'none'; base-uri 'self'"
+    )
+'''
+
+          if old not in s:
+              if "https://challenges.cloudflare.com" in s and "https://*.protect.clerk.com:*" in s:
+                  print("Clerk CAPTCHA CSP support is already present.")
+              else:
+                  raise SystemExit("Expected CSP block was not found; refusing unsafe patch.")
+          else:
+              p.write_text(s.replace(old, new, 1), encoding="utf-8")
+              print("Clerk CAPTCHA CSP support added.")
+          PY
+
+      - name: Validate backend
+        shell: bash
+        run: |
+          python -m py_compile backend/main.py
+          grep -q "https://challenges.cloudflare.com" backend/main.py
+          grep -q "https://\*.protect.clerk.com:\*" backend/main.py
+          grep -q "worker-src 'self' blob:" backend/main.py
+          echo "Validation passed."
+
+      - name: Commit CAPTCHA CSP fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/main.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Allow Clerk CAPTCHA and bot-protection resources"
+            git push
+          fi
