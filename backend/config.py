@@ -57,6 +57,8 @@ class Settings:
             "PUBLIC_BASE_URL": os.getenv("PUBLIC_BASE_URL", ""),
             "PLAID_CLIENT_ID": os.getenv("PLAID_CLIENT_ID", ""),
             "PLAID_SECRET": os.getenv("PLAID_SECRET", ""),
+            "CLERK_PUBLISHABLE_KEY": os.getenv("CLERK_PUBLISHABLE_KEY", ""),
+            "CLERK_SECRET_KEY": os.getenv("CLERK_SECRET_KEY", ""),
         }
         missing = [k for k, v in required.items() if not v or "replace" in v.lower() or "change-this" in v.lower()]
         if missing:

@@ -38,6 +38,7 @@ from notifications import send_email
 import plaid_service
 from production_api import router as production_router
 from security import hash_password, verify_password, make_token, decode_token, encrypt_secret, decrypt_secret
+from clerk_auth import current_user as clerk_current_user, public_config
 
 APP_DIR = Path(__file__).parent
 log = logging.getLogger("ice800")
@@ -67,9 +68,11 @@ async def security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' https://cdn.plaid.com; "
-        "connect-src 'self' https://*.plaid.com; style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; frame-src https://*.plaid.com; object-src 'none'; base-uri 'self'"
+        "default-src 'self'; script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; "
+        "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+        "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+        "frame-src https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; object-src 'none'; base-uri 'self'"
     )
     if settings.app_env == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -214,12 +217,7 @@ class CardRecommendationIn(BaseModel):
 
 
 def current_user(authorization: str | None = Header(None)) -> int:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Missing bearer token")
-    try:
-        return decode_token(authorization.split(" ", 1)[1])
-    except ValueError:
-        raise HTTPException(401, "Invalid or expired token")
+    return clerk_current_user(authorization)
 
 
 def config_for(user_id: int) -> StrategyConfig:
@@ -442,8 +440,14 @@ def health():
     }
 
 
-@app.post("/api/register")
+@app.get("/api/public-config")
+def get_public_config():
+    return public_config()
+
+
+@app.post("/api/register", include_in_schema=False)
 def register(x: RegisterIn):
+    raise HTTPException(410, "Legacy ICE-800 authentication is disabled. Use Clerk Secure Access.")
     if not invite_code_valid(x.invite_code, settings.beta_invite_codes, settings.beta_invite_required):
         raise HTTPException(403, "Código de acceso inválido")
     if not x.accept_terms or not x.accept_privacy:
@@ -473,8 +477,9 @@ def register(x: RegisterIn):
         raise
 
 
-@app.post("/api/login")
+@app.post("/api/login", include_in_schema=False)
 def login(x: AuthIn):
+    raise HTTPException(410, "Legacy ICE-800 authentication is disabled. Use Clerk Secure Access.")
     with db() as con:
         row = con.execute("SELECT * FROM users WHERE email=?", (x.email.lower(),)).fetchone()
     if not row or not verify_password(x.password, row["password_hash"]):

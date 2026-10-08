@@ -14,20 +14,11 @@ from pydantic import BaseModel, Field
 from audit import audit_event
 from config import settings
 from db import db
-from security import decode_token
+from clerk_auth import current_user
 import plaid_service
 from providers import method_service, engine_service
 
 router = APIRouter(prefix="/api/v1", tags=["production"])
-
-
-def current_user(authorization: str | None = Header(None)) -> int:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Missing bearer token")
-    try:
-        return decode_token(authorization.split(" ", 1)[1])
-    except ValueError:
-        raise HTTPException(401, "Invalid or expired token")
 
 
 def _lang_for(user_id: int) -> str:
