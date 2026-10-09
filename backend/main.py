@@ -39,7 +39,7 @@ import plaid_service
 from production_api import router as production_router
 from rate_limit import check_rate_limit
 from security import hash_password, verify_password, make_token, decode_token, encrypt_secret, decrypt_secret
-from clerk_auth import current_user as clerk_current_user, strict_mfa_user, public_config
+from clerk_auth import current_user as clerk_current_user, strict_mfa_user, strict_mfa_context, revoke_other_clerk_sessions, public_config
 
 APP_DIR = Path(__file__).parent
 log = logging.getLogger("ice800")
@@ -482,6 +482,20 @@ def health():
         "ok": True, "name": "ICE-800", "version": "production-candidate-1.0", "environment": settings.app_env,
         "credit_provider": credit_provider.name, "credit_provider_configured": credit_provider.configured(),
     }
+
+
+@app.post("/api/security/sessions/revoke-others")
+async def revoke_other_sessions(context: dict = Depends(strict_mfa_context)):
+    revoked = revoke_other_clerk_sessions(
+        context["clerk_user_id"],
+        context["session_id"],
+    )
+    audit_event(
+        context["user_id"],
+        "security.other_sessions_revoked",
+        {"revoked_count": revoked},
+    )
+    return {"ok": True, "revoked": revoked}
 
 
 @app.get("/api/public-config")
