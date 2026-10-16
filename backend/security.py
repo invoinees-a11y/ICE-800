@@ -13,10 +13,7 @@ JWT_ISSUER = os.environ.get("JWT_ISSUER", "ice-800")
 JWT_AUDIENCE = os.environ.get("JWT_AUDIENCE", "ice-800-app")
 JWT_TTL_MINUTES = int(os.environ.get("JWT_TTL_MINUTES", "60"))
 PASSWORD_ITERATIONS = int(os.environ.get("PASSWORD_ITERATIONS", "310000"))
-FERNET_KEY = os.environ.get("FERNET_KEY")
-if not FERNET_KEY:
-    # Development-only fallback. Production validation rejects this mode.
-    FERNET_KEY = "Gm2xnkHRVI4tBReaOTl2WscmDa9fJIVmPvGpiYMXDkw="
+FERNET_KEY = os.environ["FERNET_KEY"]
 fernet = Fernet(FERNET_KEY.encode())
 
 
