@@ -355,3 +355,8 @@ async def method_webhook(request: Request, x_method_signature: str | None = Head
             (event_key, json.dumps(payload)),
         )
     return {"ok": True}
+from financial_strategy import StrategyInput, build_strategy
+
+@router.post("/strategy/preview")
+def strategy_preview(payload: StrategyInput, user_id: int = Depends(current_user)):
+    return build_strategy(payload)
