@@ -6,12 +6,64 @@
 </head><body>
 <div id="auth" class="auth-shell"><section class="auth-card"><div class="logo">ICE</div><h1>ICE-800</h1><p data-i18n="tagline">Tu crédito, diseñado como un sistema.</p><div class="notice"><b>ICE Secure Access</b><div class="muted">Correo verificado + MFA obligatorio.</div></div><div id="clerkAuth"></div><div id="authMsg" class="msg"></div></section></div>
 <div id="app" hidden class="app"><header><div class="brand"><div class="logo sm">ICE</div><div><b>ICE-800</b><small>Credit Optimization Engine</small></div></div><div id="liveBadge" class="badge">—</div></header>
-<nav><button class="tab active" data-page="home" data-i18n="home">Inicio</button><button class="tab" data-page="banks" data-i18n="banks">Bancos</button><button class="tab" data-page="payments" data-i18n="payments">Pagos</button><button class="tab" data-page="market" data-i18n="market">Tarjetas</button><button class="tab" data-page="settings" data-i18n="settings">Ajustes</button></nav>
+<nav><button class="tab active" data-page="home" data-i18n="home">Inicio</button><button class="tab" data-page="banks" data-i18n="banks">Bancos</button><button class="tab" data-page="payments" data-i18n="payments">Pagos</button><button class="tab" data-page="market" data-i18n="market">Tarjetas</button><button class="tab" data-page="strategy">Estrategia</button><button class="tab" data-page="settings" data-i18n="settings">Ajustes</button></nav>
 <main>
 <section id="home" class="page active"><div class="grid"><article class="card hero span7"><span class="eyebrow" data-i18n="globalUtil">Utilización global</span><strong id="globalUtil" class="big">—</strong><div class="meter"><i id="globalBar"></i></div><small id="globalStatus">—</small><div class="stats"><div><span data-i18n="balance">Saldo</span><b id="totalBalance">—</b></div><div><span data-i18n="credit">Crédito</span><b id="totalLimit">—</b></div></div></article><article class="card span5"><span class="eyebrow" data-i18n="next">Próxima mejor acción</span><h2 id="nextTitle">—</h2><p id="nextReason" class="muted">—</p><button id="refresh" class="primary" data-i18n="syncNow">Sincronizar ahora</button></article></div><section class="card"><div class="section-title"><h2 data-i18n="myCards">Mis tarjetas</h2><span id="asOf" class="badge">—</span></div><div id="cards"></div></section><section class="card"><h2 data-i18n="priorities">Prioridades</h2><div id="actions"></div></section></section>
 <section id="banks" class="page"><section class="card"><div class="section-title"><div><span class="eyebrow" data-i18n="liveSync">Sincronización bancaria</span><h2 data-i18n="connections">Conexiones</h2></div><button id="connectBank" class="primary" data-i18n="connectBank">+ Conectar banco</button></div><div id="connections"></div></section><section class="card"><div class="section-title"><h2 data-i18n="transactions">Transacciones recientes</h2><button id="loadTx" data-i18n="refresh">Actualizar</button></div><div id="transactions"></div></section></section>
 <section id="payments" class="page"><section class="card"><span class="eyebrow">METHOD / LIABILITY PAYMENTS</span><h2 data-i18n="paymentCenter">Centro de pagos</h2><p class="muted" data-i18n="paymentExplain">ICE-800 prepara el pago; tú revisas el monto y confirmas antes de enviarlo.</p><div id="payCapability" class="notice">—</div><button id="connectMethod" data-i18n="connectLiabilities">Conectar deudas para pagos</button><div class="formgrid"><label><span data-i18n="source">Cuenta origen</span><select id="paySource"></select></label><label><span data-i18n="destination">Deuda destino</span><select id="payDest"></select></label><label><span data-i18n="amount">Monto ($)</span><input id="payAmount" type="number" min="0.01" step="0.01"></label><label><span data-i18n="description">Descripción</span><input id="payDesc" value="ICE-800 payment"></label></div><button id="reviewPayment" class="primary" data-i18n="reviewPayment">Revisar pago</button><div id="payReview"></div></section><section class="card"><h2 data-i18n="history">Historial de pagos</h2><div id="paymentHistory"></div></section></section>
 <section id="market" class="page"><section class="card"><span class="eyebrow">CARD OPPORTUNITY ENGINE</span><h2 data-i18n="cardOffers">Ofertas y precalificación</h2><p class="muted" data-i18n="cardExplain">ICE Fit y el marketplace se mantienen separados: una comisión comercial nunca cambia la puntuación estratégica.</p><div class="formgrid"><label>ZIP<input id="cardZip" inputmode="numeric"></label><label><span data-i18n="rating">Rango de crédito</span><select id="cardRating"><option value="">—</option><option>excellent</option><option>good</option><option>fair</option></select></label></div><button id="loadOffers" class="primary" data-i18n="findOffers">Buscar ofertas</button><div id="offers"></div></section><section class="card"><h2 data-i18n="applications">Solicitudes</h2><div id="applications"></div></section></section>
+
+<section id="strategy" class="page">
+  <section class="card">
+    <span class="eyebrow">ICE-800 • MOTOR FINANCIERO INTEGRAL</span>
+    <h2>Estrategia integral</h2>
+    <p class="muted">Compara capacidad de pago, reserva, hipotecas, préstamos estudiantiles, financiación de seguros y crédito empresarial. Los valores son para esta simulación; no se guardan.</p>
+    <div class="formgrid">
+      <label><span>Ingreso personal mensual ($)</span><input id="strategyIncome" type="number" min="0" step="0.01" value="0"></label>
+      <label><span>Gastos esenciales mensuales ($), excluyendo mínimos de deuda y seguros</span><input id="strategyEssentials" type="number" min="0" step="0.01" value="0"></label>
+      <label><span>Primas de seguros mensuales ($)</span><input id="strategyPremiums" type="number" min="0" step="0.01" value="0"></label>
+      <label><span>Ahorros líquidos ($)</span><input id="strategySavings" type="number" min="0" step="0.01" value="0"></label>
+      <label><span>Objetivo de reserva (meses)</span><input id="strategyReserveMonths" type="number" min="1" max="12" step="1" value="3"></label>
+    </div>
+    <details><summary>Crédito comercial — flujo empresarial (opcional)</summary>
+      <div class="formgrid">
+        <label><span>Ingresos mensuales del negocio ($)</span><input id="strategyBusinessRevenue" type="number" min="0" step="0.01"></label>
+        <label><span>Gastos operativos del negocio ($), sin mínimos de deuda</span><input id="strategyBusinessExpenses" type="number" min="0" step="0.01"></label>
+      </div>
+    </details>
+  </section>
+  <section class="card">
+    <h2>Obligaciones y deudas</h2>
+    <p class="muted">Los pagos de seguros ordinarios van arriba como gasto; solo la financiación de primas constituye una obligación crediticia.</p>
+    <div class="formgrid">
+      <label><span>Tipo de obligación</span><select id="strategyKind">
+        <option value="credit_card">Tarjeta de crédito</option>
+        <option value="mortgage">Hipoteca</option>
+        <option value="student_loan">Préstamo estudiantil</option>
+        <option value="auto_loan">Préstamo de vehículo</option>
+        <option value="personal_loan">Préstamo personal</option>
+        <option value="business_credit">Crédito comercial</option>
+        <option value="medical_debt">Deuda médica</option>
+        <option value="insurance_financing">Financiación de seguro</option>
+        <option value="other">Otra obligación</option>
+      </select></label>
+      <label><span>Nombre identificativo (sin números de cuenta)</span><input id="strategyName" maxlength="80" placeholder="Ej.: Tarjeta principal"></label>
+      <label><span>Saldo pendiente ($)</span><input id="strategyBalance" type="number" min="0" step="0.01"></label>
+      <label><span>APR anual (%) — dejar vacío si no se conoce</span><input id="strategyApr" type="number" min="0" max="100" step="0.01"></label>
+      <label><span>Pago mínimo mensual ($)</span><input id="strategyMinimum" type="number" min="0" step="0.01"></label>
+      <label><span>Días hasta vencimiento (negativo si venció)</span><input id="strategyDueDays" type="number" min="-365" max="365" step="1"></label>
+      <label id="strategyPropertyRow" hidden><span>Valor estimado de la propiedad ($)</span><input id="strategyPropertyValue" type="number" min="1" step="0.01"></label>
+      <label id="strategyFederalRow" hidden><input id="strategyFederal" style="width:auto" type="checkbox"> Estudiantil federal</label>
+      <label id="strategyGuaranteeRow" hidden><input id="strategyGuarantee" style="width:auto" type="checkbox"> Tiene garantía personal</label>
+      <label><input id="strategyPastDue" style="width:auto" type="checkbox"> Pago actualmente vencido</label>
+    </div>
+    <button id="strategyAdd" class="primary" type="button">+ Agregar obligación</button>
+    <div id="strategyDebts" aria-live="polite"></div>
+    <button id="strategyAnalyze" class="primary" type="button">Analizar alternativas</button>
+    <p id="strategyMessage" class="muted" aria-live="polite"></p>
+  </section>
+  <section class="card"><div id="strategyResults" aria-live="polite"></div></section>
+</section>
 <section id="settings" class="page"><div class="grid"><section class="card span6"><span class="eyebrow" data-i18n="language">Idioma</span><h2 data-i18n="languageSettings">Configuración de idioma</h2><select id="language"><option value="es">Español</option><option value="en">English</option></select><button id="saveLanguage" class="primary" data-i18n="save">Guardar</button></section><section class="card span6"><span class="eyebrow" data-i18n="systemStatus">Estado del sistema</span><h2>ICE-800 Runtime</h2><div id="capabilities"></div></section></div><section class="card"><h2 data-i18n="security">Seguridad y autorización</h2><p class="muted" data-i18n="securityText">Los tokens de proveedores se guardan en el backend. Los pagos requieren confirmación explícita. Las solicitudes de crédito se completan en el flujo autorizado del proveedor/emisor.</p><p class="muted" data-i18n="sessionRecoveryHelp">Si pierdes un teléfono o detectas un acceso extraño, cierra todas las demás sesiones desde este dispositivo verificado.</p><div class="row"><button id="revokeOtherSessions" class="danger" data-i18n="revokeOtherSessions">Cerrar otras sesiones</button><button id="logout" class="danger" data-i18n="logout">Cerrar sesión</button></div></section></section>
 </main></div>
-<div id="toast" class="toast"></div><script src="/static/app.js?v=security-phase2"></script></body></html>
+<div id="toast" class="toast"></div><script src="/static/app.js?v=security-phase2"></script><script src="/static/strategy.js?v=integral-v1"></script></body></html>
