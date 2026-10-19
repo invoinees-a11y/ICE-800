@@ -1,0 +1,99 @@
+name: Test ICE-800 Financial Strategy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - desarrollo-motor-integral
+    paths:
+      - 'backend/financial_strategy.py'
+      - 'backend/production_api.py'
+      - 'backend/static/index.html'
+      - 'backend/static/strategy.js'
+      - '.github/workflows/test-strategy.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-strategy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install minimal test dependency
+        run: python -m pip install 'pydantic>=2.9,<3'
+
+      - name: Check Python and JavaScript syntax
+        run: |
+          python -m py_compile backend/financial_strategy.py backend/production_api.py
+          node --check backend/static/strategy.js
+
+      - name: Test strategy scenarios and frontend integration
+        env:
+          PYTHONPATH: backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from financial_strategy import DebtInput, StrategyInput, build_strategy
+
+          def scenario(debts=None, **kwargs):
+              values = dict(monthly_income=5000, essential_expenses=2000,
+                            monthly_insurance_premiums=100, liquid_savings=12000,
+                            reserve_months=3, debts=debts or [])
+              values.update(kwargs)
+              return build_strategy(StrategyInput(**values))
+
+          def codes(result):
+              return {a['code'] for a in result['actions']}
+
+          credit_card = DebtInput(name='Example card', kind='credit_card',
+                                  balance=3000, apr=24, minimum_payment=90)
+          a = scenario([credit_card])
+          assert 'extra_payment' in codes(a)
+          assert a['summary']['personal_debt_total'] == 3000
+
+          b = scenario([credit_card], monthly_income=1000, liquid_savings=0)
+          assert 'budget_shortfall' in codes(b)
+          assert 'extra_payment' not in codes(b)
+
+          federal = DebtInput(name='Federal student loan', kind='student_loan',
+                              balance=10000, apr=5, minimum_payment=150,
+                              federal_student=True)
+          c = scenario([federal])
+          assert 'federal_student_review' in codes(c)
+          assert 'extra_payment' not in codes(c)
+
+          mortgage = DebtInput(name='Home', kind='mortgage', balance=250000,
+                               apr=6, minimum_payment=1650, property_value=210000)
+          d = scenario([mortgage])
+          assert 'mortgage_equity' in codes(d)
+          assert d['debts'][0]['loan_to_value'] > 1
+
+          business = DebtInput(name='Business line', kind='business_credit',
+                               balance=12000, apr=11, minimum_payment=200,
+                               personal_guarantee=True)
+          e = scenario([credit_card, business], monthly_business_revenue=3000,
+                       business_operating_expenses=1000)
+          assert e['summary']['personal_debt_total'] == 3000
+          assert e['summary']['business_debt_total'] == 12000
+          assert e['summary']['business_monthly_surplus'] == 1800
+          assert 'business_guarantee' in codes(e)
+
+          html = Path('backend/static/index.html').read_text(encoding='utf-8')
+          js = Path('backend/static/strategy.js').read_text(encoding='utf-8')
+          api = Path('backend/production_api.py').read_text(encoding='utf-8')
+          assert html.index('data-page="strategy"') < html.index('</nav>')
+          assert 'id="strategy" class="page"' in html
+          assert '/static/strategy.js' in html
+          assert '/api/v1/strategy/preview' in js
+          assert '@router.post("/strategy/preview")' in api
+          assert 'Depends(current_user)' in api
+          print('ICE-800 strategy: scenario and integration checks passed')
+          PY
