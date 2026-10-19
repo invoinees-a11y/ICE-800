@@ -23,29 +23,29 @@ jobs:
           s = p.read_text(encoding="utf-8")
 
           old = '''    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; "
-        "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com; "
-        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
-        "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
-        "frame-src https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; object-src 'none'; base-uri 'self'"
-    )
-'''
+                  "default-src 'self'; script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; "
+                  "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com; "
+                  "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+                  "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+                  "frame-src https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com; object-src 'none'; base-uri 'self'"
+              )
+          '''
 
           new = '''    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
-        "https://challenges.cloudflare.com https://*.protect.clerk.com; "
-        "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com "
-        "https://*.protect.clerk.com:*; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev https://img.clerk.com; "
-        "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
-        "worker-src 'self' blob:; "
-        "frame-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
-        "https://challenges.cloudflare.com https://*.protect.clerk.com; "
-        "form-action 'self'; object-src 'none'; base-uri 'self'"
-    )
-'''
+                  "default-src 'self'; "
+                  "script-src 'self' https://cdn.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
+                  "https://challenges.cloudflare.com https://*.protect.clerk.com; "
+                  "connect-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com "
+                  "https://*.protect.clerk.com:*; "
+                  "style-src 'self' 'unsafe-inline'; "
+                  "img-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev https://img.clerk.com; "
+                  "font-src 'self' data: https://*.clerk.com https://*.clerk.accounts.dev; "
+                  "worker-src 'self' blob:; "
+                  "frame-src 'self' https://*.plaid.com https://*.clerk.accounts.dev https://*.clerk.com "
+                  "https://challenges.cloudflare.com https://*.protect.clerk.com; "
+                  "form-action 'self'; object-src 'none'; base-uri 'self'"
+              )
+          '''
 
           if old not in s:
               if "https://challenges.cloudflare.com" in s and "https://*.protect.clerk.com:*" in s:
